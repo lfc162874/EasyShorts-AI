@@ -1,0 +1,2 @@
+"""EasyShorts AI backend package."""
+

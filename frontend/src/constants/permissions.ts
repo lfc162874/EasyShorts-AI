@@ -1,0 +1,83 @@
+import type { OptionItem } from "@/types/common";
+
+export const userStatusOptions: OptionItem[] = [
+  { label: "启用", value: "ACTIVE" },
+  { label: "停用", value: "DISABLED" },
+];
+
+export const roleTypeOptions: OptionItem[] = [
+  { label: "系统角色", value: "true" },
+  { label: "普通角色", value: "false" },
+];
+
+export const menuTypeOptions: OptionItem[] = [
+  { label: "目录", value: "DIRECTORY" },
+  { label: "菜单", value: "MENU" },
+  { label: "按钮", value: "BUTTON" },
+];
+
+export const configValueTypeOptions: OptionItem[] = [
+  { label: "字符串", value: "STRING" },
+  { label: "整数", value: "INTEGER" },
+  { label: "浮点", value: "FLOAT" },
+  { label: "布尔", value: "BOOLEAN" },
+  { label: "JSON", value: "JSON" },
+  { label: "密钥", value: "SECRET" },
+];
+
+export const platformAuthStatusOptions: OptionItem[] = [
+  { label: "未授权", value: "UNAUTHORIZED" },
+  { label: "已授权", value: "AUTHORIZED" },
+  { label: "已过期", value: "EXPIRED" },
+  { label: "已停用", value: "DISABLED" },
+];
+
+export const taskStatusOptions: OptionItem[] = [
+  { label: "待执行", value: "PENDING" },
+  { label: "执行中", value: "RUNNING" },
+  { label: "成功", value: "SUCCESS" },
+  { label: "失败", value: "FAILED" },
+  { label: "重试中", value: "RETRYING" },
+  { label: "已取消", value: "CANCELLED" },
+];
+
+export const fileCategoryOptions: OptionItem[] = [
+  { label: "图片", value: "IMAGE" },
+  { label: "音频", value: "AUDIO" },
+  { label: "视频", value: "VIDEO" },
+  { label: "文档", value: "DOCUMENT" },
+  { label: "其他", value: "OTHER" },
+];
+
+export const operationStatusOptions: OptionItem[] = [
+  { label: "成功", value: "SUCCESS" },
+  { label: "失败", value: "FAILED" },
+];
+
+export const newsSourceTypeOptions: OptionItem[] = [
+  { label: "RSS", value: "RSS" },
+  { label: "ATOM", value: "ATOM" },
+  { label: "网页", value: "WEB" },
+  { label: "手动", value: "MANUAL" },
+];
+
+export const newsStatusOptions: OptionItem[] = [
+  { label: "待处理", value: "NEW" },
+  { label: "已去重", value: "DEDUPED" },
+  { label: "已筛选", value: "FILTERED" },
+  { label: "已拒绝", value: "REJECTED" },
+  { label: "脚本就绪", value: "SCRIPT_READY" },
+  { label: "已归档", value: "ARCHIVED" },
+];
+
+export const newsGenerateStyleOptions: OptionItem[] = [
+  { label: "专业快讯", value: "professional" },
+  { label: "播报口吻", value: "broadcast" },
+  { label: "故事化", value: "story" },
+  { label: "简洁版", value: "concise" },
+];
+
+export const newsFetchModeOptions: OptionItem[] = [
+  { label: "手动", value: "MANUAL" },
+  { label: "定时", value: "SCHEDULED" },
+];

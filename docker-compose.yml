@@ -1,0 +1,77 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: easy-shorts-backend
+    env_file:
+      - ./backend/.env.docker
+    working_dir: /app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  worker:
+    build:
+      context: ./backend
+    container_name: easy-shorts-worker
+    env_file:
+      - ./backend/.env.docker
+    working_dir: /app
+    command: celery -A app.core.celery_app.celery_app worker -Q system_queue,news_queue,content_queue,media_queue,publish_queue,analytics_queue --loglevel=info
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  beat:
+    build:
+      context: ./backend
+    container_name: easy-shorts-beat
+    env_file:
+      - ./backend/.env.docker
+    working_dir: /app
+    command: celery -A app.core.celery_app.celery_app beat --loglevel=info
+    volumes:
+      - ./backend:/app
+    depends_on:
+      redis:
+        condition: service_started
+
+  postgres:
+    image: postgres:16
+    container_name: easy-shorts-postgres
+    environment:
+      POSTGRES_DB: easy_shorts
+      POSTGRES_USER: easy_shorts
+      POSTGRES_PASSWORD: easy_shorts
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U easy_shorts -d easy_shorts"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: easy-shorts-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+volumes:
+  postgres-data:
+  redis-data:

@@ -1,2 +1,17 @@
 .DS_Store
 .idea/
+.vscode/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+backend/.env
+backend/.pytest_cache/
+backend/data/
+backend/storage/
+backend/.env
+
