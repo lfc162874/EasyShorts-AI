@@ -8,6 +8,7 @@
 - JWT 登录鉴权与 RBAC 基础模型
 - 用户、角色、菜单、系统配置、平台账号基础接口
 - 新闻源、新闻列表、抓取记录与内容生成接口
+- AgentScope 智能处理模块与热点池接口
 - 文件上传与本地存储适配层
 - 操作日志、错误日志、任务日志基础查询接口
 - Celery 演示任务与 Redis 配置
@@ -56,6 +57,13 @@ cp backend/.env.example backend/.env
 
 ```text
 DATABASE_URL=postgresql+psycopg://postgres:123456@localhost:5432/easy_shorts
+```
+
+如果你要启用 AgentScope 的真实模型调用，再补上：
+
+```text
+DASHSCOPE_API_KEY=你的 DashScope Key
+AGENT_DEFAULT_PROVIDER=dashscope
 ```
 
 3. 执行数据库迁移：
@@ -154,8 +162,17 @@ docker compose up --build
 - `POST /easy-shorts/news/sources/{source_id}/sync`
 - `GET /easy-shorts/news`
 - `GET /easy-shorts/news/{news_id}`
+- `POST /easy-shorts/news/{news_id}/process`
 - `POST /easy-shorts/news/{news_id}/generate`
 - `GET /easy-shorts/news/records`
+- `GET /easy-shorts/agent/config`
+- `PUT /easy-shorts/agent/config`
+- `GET /easy-shorts/agent/models`
+- `POST /easy-shorts/agent/runs/news/{news_id}`
+- `GET /easy-shorts/agent/runs`
+- `GET /easy-shorts/agent/runs/{run_id}`
+- `GET /easy-shorts/agent/hot-topics`
+- `GET /easy-shorts/agent/push-plans`
 - `POST /easy-shorts/uploads/files`
 
 ## 后续建议

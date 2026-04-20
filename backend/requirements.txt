@@ -10,4 +10,4 @@ python-jose[cryptography]>=3.3,<4.0
 passlib[bcrypt]>=1.7.4,<2.0
 python-multipart>=0.0.9,<1.0
 email-validator>=2.1,<3.0
-
+agentscope[full]>=1.0.18,<2.0.0

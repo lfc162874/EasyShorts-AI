@@ -21,6 +21,8 @@ from app.core.exceptions import ConflictException, NotFoundException, Validation
 from app.core.logging import get_logger
 from app.db.models.business import News, NewsFetchRecord, NewsSource
 from app.db.models.system import SystemConfig
+from app.services.content_pipeline_service import process_collected_entry, refine_content_with_agent
+from app.services.collector_service import collect_source_entries
 from app.schemas.news import (
     NewsDetailItem,
     NewsFetchRecordItem,
@@ -311,16 +313,15 @@ def _build_summary(entry: ParsedNewsEntry, style: str) -> str:
     ]
     selected = sentences[:2] if sentences else [source_text[:180]]
     lead = "；".join(selected)
-    style_hint = f"（{style}）" if style else ""
-    return _normalize_whitespace(f"{lead}{style_hint}")
+    return _normalize_whitespace(lead)
 
 
-def _build_translation(text: str, label: str) -> str:
+def _build_translation(text: str) -> str:
     if not text:
         return ""
     if _contains_chinese(text):
         return text
-    return f"{label}：{_normalize_whitespace(text)}"
+    return _normalize_whitespace(text)
 
 
 def _extract_keywords(text: str) -> list[str]:
@@ -732,8 +733,13 @@ def sync_news_source(
     triggered_by: int | None = None,
 ) -> dict:
     source = get_news_source(db, source_id)
-    if source.source_type not in {NewsSourceType.RSS.value, NewsSourceType.ATOM.value}:
-        raise ValidationException(message="当前仅支持 RSS 或 Atom 新闻源")
+    if source.source_type not in {
+        NewsSourceType.RSS.value,
+        NewsSourceType.ATOM.value,
+        NewsSourceType.WEB.value,
+        NewsSourceType.MANUAL.value,
+    }:
+        raise ValidationException(message=f"当前仅支持 RSS、Atom、Web 或手工来源，当前为 {source.source_type}")
 
     now = _now()
     source.last_fetched_at = now
@@ -751,27 +757,17 @@ def sync_news_source(
             "triggered_by": triggered_by,
             "source_key": source.source_key,
             "source_url": source.url,
+            "source_type": source.source_type,
+            "collector": "rule-based-collector",
         },
     )
     db.add(record)
     db.commit()
     db.refresh(record)
 
-    existing_rows = db.execute(
-        select(News.url, News.dedup_hash).where(
-            or_(
-                News.source_id == source.id,
-                News.source == source.name,
-            )
-        )
-    ).all()
-    existing_urls = {row[0] for row in existing_rows if row[0]}
-    existing_hashes = {row[1] for row in existing_rows if row[1]}
-
     try:
-        raw_text = _fetch_remote_text(source.url)
-        entries = _parse_feed_entries(source, raw_text)
-    except (ET.ParseError, URLError, TimeoutError, OSError, ValueError) as exc:
+        entries = collect_source_entries(source)
+    except (ET.ParseError, URLError, TimeoutError, OSError, ValueError, ValidationException) as exc:
         logger.exception("failed to fetch news source %s", source.id)
         source.last_error_message = str(exc)
         record.error_count = 1
@@ -786,82 +782,42 @@ def sync_news_source(
             "new_count": 0,
             "duplicate_count": 0,
             "filtered_count": 0,
+            "rejected_count": 0,
         }
 
-    block_keywords = _load_block_keywords(db)
-    hot_threshold = _load_hot_threshold(db)
-    prompt_bundle = _load_prompt_bundle(db)
-
     created_items: list[News] = []
+    created_ids: set[int] = set()
     duplicate_count = 0
+    merged_count = 0
     filtered_count = 0
     rejected_count = 0
+    promoted_count = 0
 
     for entry in entries:
-        dedup_hash = _compute_dedup_hash(entry)
-        if entry.link in existing_urls or dedup_hash in existing_hashes:
-            duplicate_count += 1
-            continue
-
-        category = _infer_category(source, entry)
-        language = _infer_language(source, entry)
-        hot_score = _score_hotness(db, source, entry)
-        rejection_reason = _is_sensitive(entry, block_keywords)
-        if rejection_reason is None and hot_score < hot_threshold:
-            rejection_reason = f"热度不足，当前评分 {hot_score}，阈值 {hot_threshold}"
-
-        news = News(
-            title=entry.title,
-            content=entry.content,
-            source=source.name,
-            source_id=source.id,
-            source_url=source.url,
-            url=entry.link,
-            publish_time=entry.published_at,
-            status=NewsStatus.NEW.value,
-            dedup_hash=dedup_hash,
-            category=category,
-            hot_score=hot_score,
-            language=language,
-            raw_metadata={
-                **entry.raw,
-                "author": entry.author,
-                "guid": entry.guid,
-                "source_key": source.source_key,
-                "source_type": source.source_type,
-                "source_name": source.name,
-                "fetch_mode": fetch_mode.value,
-                "prompt_bundle": prompt_bundle,
-            },
+        outcome = process_collected_entry(
+            db,
+            source=source,
+            entry=entry,
+            fetch_mode=fetch_mode,
+            request_id=request_id,
+            task_job_id=task_job_id,
+            triggered_by=triggered_by,
         )
-        db.add(news)
-        db.flush()
-
-        news.status = NewsStatus.DEDUPED.value
-        if rejection_reason:
-            news.status = NewsStatus.REJECTED.value
-            news.filter_reason = rejection_reason
+        news = outcome.news
+        if outcome.duplicate:
+            duplicate_count += 1
+        if outcome.merged:
+            merged_count += 1
+        if outcome.created:
+            created_items.append(news)
+            created_ids.add(news.id)
+        if news.status == NewsStatus.FILTERED.value:
+            if not (outcome.duplicate and news.id in created_ids):
+                filtered_count += 1
+            if outcome.promoted_from_rejected:
+                promoted_count += 1
+        elif news.status == NewsStatus.REJECTED.value:
             rejected_count += 1
-        else:
-            news.status = NewsStatus.FILTERED.value
-            summary = _build_summary(entry, "专业快讯")
-            news.summary = summary
-            news.translated_title = _build_translation(entry.title, "中文标题")
-            news.translated_content = _build_translation(entry.content, "中文内容")
-            news.tags = _build_tags(db, source, entry, category, "professional")
-            news.script = _build_script(
-                entry=entry,
-                category=category,
-                summary=summary,
-                translated_title=news.translated_title or "",
-                style="professional",
-                tags=news.tags or [],
-            )
-            filtered_count += 1
-        db.add(news)
-        created_items.append(news)
-        existing_urls.add(entry.link)
-        existing_hashes.add(dedup_hash)
 
     record.status = TaskStatus.SUCCESS.value
     record.total_count = len(entries)
@@ -874,7 +830,9 @@ def sync_news_source(
         **(record.extra or {}),
         "rejected_count": rejected_count,
         "accepted_count": filtered_count,
-        "generated_by": "rule-based-pipeline",
+        "merged_count": merged_count,
+        "promoted_count": promoted_count,
+        "generated_by": "content-processing-v1",
     }
     source.last_success_at = _now()
     source.last_error_message = None
@@ -888,8 +846,10 @@ def sync_news_source(
         "total_count": len(entries),
         "new_count": len(created_items),
         "duplicate_count": duplicate_count,
+        "merged_count": merged_count,
         "filtered_count": filtered_count,
         "rejected_count": rejected_count,
+        "promoted_count": promoted_count,
     }
 
 
@@ -913,8 +873,6 @@ def _generate_news_fields(
         ),
         style,
     )
-    translated_title = _build_translation(news.title, "中文标题")
-    translated_content = _build_translation(news.content or news.title, "中文内容")
     category = news.category or "行业动态"
     source = db.get(NewsSource, news.source_id) if news.source_id else None
     entry = ParsedNewsEntry(
@@ -927,6 +885,8 @@ def _generate_news_fields(
         guid=None,
         raw=news.raw_metadata or {},
     )
+    translated_title = _build_translation(news.title)
+    translated_content = _build_translation(news.content or news.title)
     tags = _build_tags(db, source, entry, category, style)
     script = _build_script(
         entry=entry,
@@ -936,13 +896,57 @@ def _generate_news_fields(
         style=style,
         tags=tags,
     )
+    agent_result = refine_content_with_agent(
+        db,
+        title=news.title,
+        source_name=news.source,
+        source_type=source.source_type if source else None,
+        category=category,
+        language=news.language or (source.language if source else "en") or "en",
+        hot_score=news.hot_score or 0,
+        summary=summary or news.summary or "",
+        content=news.content or news.title,
+        style=style,
+    )
+    if agent_result is not None:
+        agent_used = True
+        refined_title = str(agent_result.get("title") or "").strip()
+        if refined_title:
+            news_title = refined_title
+        else:
+            news_title = news.title
+
+        refined_summary = str(agent_result.get("summary") or "").strip()
+        if refined_summary:
+            summary = refined_summary
+
+        refined_translated_title = str(agent_result.get("translated_title") or "").strip()
+        if refined_translated_title:
+            translated_title = refined_translated_title
+
+        refined_translated_content = str(agent_result.get("translated_content") or "").strip()
+        if refined_translated_content:
+            translated_content = refined_translated_content
+
+        agent_tags = [str(item).strip() for item in agent_result.get("tags") or [] if str(item).strip()]
+        if agent_tags:
+            tags = list(dict.fromkeys([*tags, *agent_tags]))[:5]
+
+        refined_script = str(agent_result.get("script") or "").strip()
+        if refined_script:
+            script = refined_script
+    else:
+        agent_used = False
+        news_title = news.title
     return {
         "summary": summary or news.summary or "",
-        "translated_title": translated_title or news.translated_title or news.title,
+        "translated_title": translated_title or news.translated_title or news_title,
         "translated_content": translated_content or news.translated_content or news.content or news.title,
         "script": script,
         "tags": tags,
         "prompt_bundle": prompt_bundle,
+        "news_title": news_title,
+        "agent_used": agent_used,
     }
 
 
@@ -960,6 +964,7 @@ def generate_news_content(
         raise ValidationException(message="已拒绝的新闻不能直接生成内容")
 
     generated = _generate_news_fields(db=db, news=news, style=payload.style)
+    news.title = generated.get("news_title", news.title)  # type: ignore[assignment]
     news.summary = generated["summary"]  # type: ignore[assignment]
     news.translated_title = generated["translated_title"]  # type: ignore[assignment]
     news.translated_content = generated["translated_content"]  # type: ignore[assignment]
@@ -976,7 +981,7 @@ def generate_news_content(
             "triggered_by": triggered_by,
             "generated_at": _now().isoformat(),
             "prompt_bundle": generated["prompt_bundle"],
-            "pipeline": "rule-based-fallback",
+            "pipeline": "content-processing-agent-v1" if generated.get("agent_used") else "rule-based-fallback",
         },
     }
     db.add(news)
@@ -994,7 +999,13 @@ def list_due_news_sources(db: Session, *, now: datetime | None = None) -> list[N
     sources = db.scalars(
         select(NewsSource).where(
             NewsSource.is_enabled.is_(True),
-            NewsSource.source_type.in_([NewsSourceType.RSS.value, NewsSourceType.ATOM.value]),
+            NewsSource.source_type.in_(
+                [
+                    NewsSourceType.RSS.value,
+                    NewsSourceType.ATOM.value,
+                    NewsSourceType.WEB.value,
+                ]
+            ),
         )
     ).all()
     due_sources: list[NewsSource] = []

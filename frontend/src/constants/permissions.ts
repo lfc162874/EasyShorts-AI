@@ -66,18 +66,77 @@ export const newsStatusOptions: OptionItem[] = [
   { label: "已去重", value: "DEDUPED" },
   { label: "已筛选", value: "FILTERED" },
   { label: "已拒绝", value: "REJECTED" },
-  { label: "脚本就绪", value: "SCRIPT_READY" },
+  { label: "处理就绪", value: "SCRIPT_READY" },
   { label: "已归档", value: "ARCHIVED" },
 ];
 
 export const newsGenerateStyleOptions: OptionItem[] = [
-  { label: "专业快讯", value: "professional" },
-  { label: "播报口吻", value: "broadcast" },
-  { label: "故事化", value: "story" },
-  { label: "简洁版", value: "concise" },
+  { label: "热点简报", value: "professional" },
+  { label: "播报摘要", value: "broadcast" },
+  { label: "深度整理", value: "story" },
+  { label: "简洁速览", value: "concise" },
 ];
 
 export const newsFetchModeOptions: OptionItem[] = [
-  { label: "手动", value: "MANUAL" },
-  { label: "定时", value: "SCHEDULED" },
+  { label: "手动触发", value: "MANUAL" },
+  { label: "定时调度", value: "SCHEDULED" },
+];
+
+export const agentRunStatusOptions: OptionItem[] = [
+  { label: "待执行", value: "PENDING" },
+  { label: "运行中", value: "RUNNING" },
+  { label: "成功", value: "SUCCESS" },
+  { label: "失败", value: "FAILED" },
+  { label: "重试中", value: "RETRYING" },
+  { label: "已取消", value: "CANCELLED" },
+];
+
+export const agentRunTypeOptions: OptionItem[] = [
+  { label: "单条内容", value: "single_article" },
+  { label: "简报", value: "digest" },
+  { label: "推送计划", value: "push_plan" },
+];
+
+export const agentBizTypeOptions: OptionItem[] = [
+  { label: "内容", value: "news" },
+  { label: "热点", value: "hot_topic" },
+  { label: "简报", value: "digest" },
+];
+
+export const hotTopicStatusOptions: OptionItem[] = [
+  { label: "启用", value: "ACTIVE" },
+  { label: "忽略", value: "IGNORED" },
+  { label: "已归档", value: "ARCHIVED" },
+];
+
+export const hotTopicPriorityOptions: OptionItem[] = [
+  { label: "高", value: "HIGH" },
+  { label: "中", value: "MEDIUM" },
+  { label: "低", value: "LOW" },
+];
+
+export const hotTopicTrendOptions: OptionItem[] = [
+  { label: "上升", value: "RISING" },
+  { label: "持续", value: "WATCH" },
+  { label: "稳定", value: "STABLE" },
+];
+
+export const pushPlanStatusOptions: OptionItem[] = [
+  { label: "待执行", value: "PENDING" },
+  { label: "已计划", value: "SCHEDULED" },
+  { label: "已执行", value: "EXECUTED" },
+  { label: "失败", value: "FAILED" },
+  { label: "已取消", value: "CANCELLED" },
+];
+
+export const pushPlanTypeOptions: OptionItem[] = [
+  { label: "即时推送", value: "IMMEDIATE" },
+  { label: "简报推送", value: "DIGEST" },
+  { label: "定时推送", value: "SCHEDULED" },
+];
+
+export const agentPushChannelOptions: OptionItem[] = [
+  { label: "邮件", value: "email" },
+  { label: "飞书", value: "feishu" },
+  { label: "企业微信", value: "wechat_work" },
 ];

@@ -31,6 +31,9 @@ class Settings(BaseSettings):
         alias="DATABASE_URL",
     )
     redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
+    dashscope_api_key: str | None = Field(default=None, alias="DASHSCOPE_API_KEY")
+    openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
+    openai_base_url: str | None = Field(default=None, alias="OPENAI_BASE_URL")
 
     storage_backend: str = Field(default="local", alias="STORAGE_BACKEND")
     local_storage_root: str = Field(default="storage/uploads", alias="LOCAL_STORAGE_ROOT")
@@ -60,6 +63,17 @@ class Settings(BaseSettings):
         alias="BOOTSTRAP_ADMIN_EMAIL",
     )
 
+    agent_default_model_name: str = Field(
+        default="qwen3.5-plus",
+        alias="AGENT_DEFAULT_MODEL_NAME",
+    )
+    agent_supported_models: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["qwen3.5-plus", "qwen-max", "deepseek-v3"],
+        alias="AGENT_SUPPORTED_MODELS",
+    )
+    agent_prompt_version: str = Field(default="v1", alias="AGENT_PROMPT_VERSION")
+    agent_default_provider: str = Field(default="dashscope", alias="AGENT_DEFAULT_PROVIDER")
+
     backend_cors_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["http://localhost:5173", "http://localhost:3000"],
         alias="BACKEND_CORS_ORIGINS",
@@ -70,6 +84,21 @@ class Settings(BaseSettings):
     def parse_origins(cls, value: str | list[str]) -> list[str]:
         if isinstance(value, list):
             return value
+        if not value:
+            return []
+        if value.startswith("[") and value.endswith("]"):
+            import json
+
+            parsed = json.loads(value)
+            if isinstance(parsed, list):
+                return [str(item).strip() for item in parsed if str(item).strip()]
+        return [item.strip() for item in value.split(",") if item.strip()]
+
+    @field_validator("agent_supported_models", mode="before")
+    @classmethod
+    def parse_agent_supported_models(cls, value: str | list[str]) -> list[str]:
+        if isinstance(value, list):
+            return [item.strip() for item in value if str(item).strip()]
         if not value:
             return []
         if value.startswith("[") and value.endswith("]"):

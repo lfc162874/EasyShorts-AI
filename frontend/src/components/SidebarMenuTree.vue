@@ -2,16 +2,20 @@
 import { computed } from "vue";
 import {
   Collection,
+  Connection,
   DataLine,
   Document,
   FolderOpened,
   Link,
   Menu as MenuIcon,
   Operation,
+  Position,
   Platform,
+  Cpu,
   Setting,
   User,
   UserFilled,
+  TrendCharts,
   VideoCamera,
 } from "@element-plus/icons-vue";
 
@@ -48,6 +52,10 @@ const iconMap: Record<string, unknown> = {
   videos: VideoCamera,
   collection: Collection,
   link: Link,
+  cpu: Cpu,
+  connection: Connection,
+  "trend-charts": TrendCharts,
+  position: Position,
 };
 
 const resolveIcon = (icon?: string | null) => iconMap[icon?.toLowerCase() ?? ""] ?? MenuIcon;

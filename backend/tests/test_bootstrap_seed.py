@@ -46,9 +46,15 @@ def test_bootstrap_default_data_is_idempotent():
         assert repeated_counts["menus"] >= 20
         assert repeated_counts["roles"] == 2
         assert repeated_counts["users"] == 2
-        assert repeated_counts["configs"] >= 9
-        assert repeated_counts["news_sources"] == 2
+        assert repeated_counts["configs"] >= 14
+        assert repeated_counts["news_sources"] == 4
         assert repeated_counts["platform_accounts"] == 1
+
+        source_keys = {
+            row[0]
+            for row in db.execute(select(NewsSource.source_key)).all()
+        }
+        assert "zhihu_ai_hot" in source_keys
 
         admin = db.scalar(select(User).where(User.username == "admin"))
         assert admin is not None
@@ -63,3 +69,8 @@ def test_bootstrap_default_data_is_idempotent():
         assert "system:platform-account:list" in permissions
         assert "news:list" in permissions
         assert "news:generate" in permissions
+        assert "agent:config:list" in permissions
+        assert "agent:run:create" in permissions
+        assert "agent:run:digest:create" in permissions
+        assert "agent:digest:list" in permissions
+        assert "agent:push-record:list" in permissions

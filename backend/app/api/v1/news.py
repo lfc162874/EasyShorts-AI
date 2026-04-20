@@ -7,7 +7,7 @@ from app.core.exceptions import NotFoundException
 from app.core.response import success_response
 from app.db.models.business import NewsFetchRecord
 from app.db.models.rbac import User
-from app.schemas.news import NewsGenerateRequest, NewsSourceCreate, NewsSourceUpdate
+from app.schemas.news import NewsGenerateRequest, NewsProcessRequest, NewsSourceCreate, NewsSourceUpdate
 from app.services.audit_service import record_operation_log
 from app.services.news_service import (
     create_news_source as create_news_source_service,
@@ -24,6 +24,7 @@ from app.services.news_service import (
 )
 from app.services.task_service import (
     dispatch_news_content_generation_task,
+    dispatch_news_content_processing_task,
     dispatch_news_source_sync_task,
 )
 
@@ -247,5 +248,36 @@ def generate_news(
         biz_type="news",
         biz_id=str(news.id),
         message=f"触发新闻内容生成 {news.id}",
+    )
+    return success_response(task_job, status_code=202)
+
+
+@router.post("/{news_id}/process")
+def process_news(
+    news_id: int,
+    request: Request,
+    payload: NewsProcessRequest | None = None,
+    current_user: User = Depends(require_permission("news:process")),
+    db: Session = Depends(get_db),
+):
+    news = get_news(db, news_id)
+    payload = payload or NewsProcessRequest()
+    task_job = dispatch_news_content_processing_task(
+        db=db,
+        news_id=news.id,
+        style=payload.style,
+        force=payload.force,
+        triggered_by=current_user.id,
+        request_id=request.state.request_id,
+    )
+    record_operation_log(
+        module="news",
+        action="process",
+        operator_id=current_user.id,
+        operator_name=current_user.username,
+        request=request,
+        biz_type="news",
+        biz_id=str(news.id),
+        message=f"触发新闻内容处理 {news.id}",
     )
     return success_response(task_job, status_code=202)

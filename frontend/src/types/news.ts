@@ -1,5 +1,18 @@
 import type { PaginationQuery } from "@/types/common";
 
+export interface NewsSourceExtraConfig {
+  weight?: number;
+  mode?: "list" | "single";
+  article_urls?: string[];
+  urls?: string[];
+  max_items?: number;
+  link_patterns?: string[];
+  exclude_link_patterns?: string[];
+  items?: Array<Record<string, unknown>>;
+  entries?: Array<Record<string, unknown>>;
+  [key: string]: unknown;
+}
+
 export interface NewsSourceItem {
   id: number;
   source_key: string;
@@ -13,7 +26,7 @@ export interface NewsSourceItem {
   last_fetched_at: string | null;
   last_success_at: string | null;
   last_error_message: string | null;
-  extra: Record<string, unknown> | null;
+  extra: NewsSourceExtraConfig | null;
   created_at: string;
   updated_at: string;
 }
@@ -28,7 +41,7 @@ export interface NewsSourceUpsertForm {
   language: string;
   fetch_interval_minutes: number;
   is_enabled: boolean;
-  extra: Record<string, unknown> | null;
+  extra: NewsSourceExtraConfig | null;
 }
 
 export interface NewsSourceQuery extends PaginationQuery {
@@ -102,4 +115,3 @@ export interface NewsFetchRecordQuery extends PaginationQuery {
   source_id?: number;
   status?: NewsFetchRecordItem["status"];
 }
-

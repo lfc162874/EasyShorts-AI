@@ -59,6 +59,11 @@ class NewsGenerateRequest(BaseModel):
     regenerate: bool = False
 
 
+class NewsProcessRequest(BaseModel):
+    style: str = Field(default="professional", max_length=64)
+    force: bool = False
+
+
 class NewsSyncRequest(BaseModel):
     fetch_mode: NewsFetchMode = NewsFetchMode.MANUAL
 
@@ -112,4 +117,3 @@ class NewsFetchRecordItem(ORMModel):
 class NewsDetailItem(NewsItem):
     source_detail: NewsSourceItem | None = None
     fetch_records: list[NewsFetchRecordItem] = Field(default_factory=list)
-

@@ -1,15 +1,25 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
+import { useRoute, useRouter } from "vue-router";
 
 import PageSectionHeader from "@/components/PageSectionHeader.vue";
 import StatusTag from "@/components/StatusTag.vue";
-import { getNewsFetchRecord, listNewsFetchRecords, listNewsSources } from "@/api/modules/news";
+import {
+  getNewsFetchRecord,
+  listNewsFetchRecords,
+  listNewsSources,
+  syncNewsSource,
+} from "@/api/modules/news";
 import { taskStatusOptions } from "@/constants/permissions";
 import type { NewsFetchRecordItem, NewsSourceItem } from "@/types/news";
 import { formatDateTime, formatJson } from "@/utils/format";
 
+const route = useRoute();
+const router = useRouter();
+
 const loading = ref(false);
+const retryingId = ref<number | null>(null);
 const detailVisible = ref(false);
 const detailLoading = ref(false);
 const records = ref<NewsFetchRecordItem[]>([]);
@@ -23,6 +33,20 @@ const query = reactive({
   source_id: "" as "" | number,
   status: "" as "" | NewsFetchRecordItem["status"],
 });
+
+const selectedSource = computed(() =>
+  sources.value.find((item) => item.id === Number(query.source_id)) ?? null,
+);
+
+const parseRouteId = (value: unknown): number | null => {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  const parsed = Number(rawValue);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const applyRouteFilters = () => {
+  query.source_id = parseRouteId(route.query.source_id) ?? "";
+};
 
 const loadSources = async () => {
   const response = await listNewsSources({ page: 1, page_size: 200 });
@@ -53,13 +77,53 @@ const openDetail = async (row: NewsFetchRecordItem) => {
     const response = await getNewsFetchRecord(row.id);
     detail.value = response.data;
   } catch {
-    ElMessage.error("抓取记录详情加载失败");
+    ElMessage.error("采集记录详情加载失败");
   } finally {
     detailLoading.value = false;
   }
 };
 
+const handleRetry = async (row: NewsFetchRecordItem) => {
+  retryingId.value = row.id;
+  try {
+    const response = await syncNewsSource(row.source_id);
+    ElMessage.success(`已重新提交采集任务 #${response.data.id}`);
+    await loadRecords();
+  } catch {
+    // 请求层会处理具体错误提示。
+  } finally {
+    retryingId.value = null;
+  }
+};
+
+const goToSourceDetail = (sourceId?: number) => {
+  const targetId = sourceId ?? selectedSource.value?.id;
+  if (!targetId) {
+    return;
+  }
+  void router.push(`/news/sources/${targetId}`);
+};
+
+const goToArticles = () => {
+  if (!selectedSource.value) {
+    return;
+  }
+  void router.push({
+    path: "/news/list",
+    query: { source_id: String(selectedSource.value.id) },
+  });
+};
+
+watch(
+  () => route.query.source_id,
+  async () => {
+    applyRouteFilters();
+    await loadRecords();
+  },
+);
+
 onMounted(async () => {
+  applyRouteFilters();
   await loadSources();
   await loadRecords();
 });
@@ -68,16 +132,35 @@ onMounted(async () => {
 <template>
   <div class="page-shell">
     <PageSectionHeader
-      title="抓取记录"
-      description="每次新闻源同步都会留下记录，方便查看抓取数量、重复项和异常信息。"
-    />
+      title="采集记录"
+      description="按任务视角查看每次采集执行结果，定位错误并重新触发抓取。"
+    >
+      <el-tag
+        v-if="selectedSource"
+        effect="plain"
+      >
+        当前来源：{{ selectedSource.name }}
+      </el-tag>
+      <el-button
+        v-if="selectedSource"
+        @click="goToSourceDetail()"
+      >
+        来源详情
+      </el-button>
+      <el-button
+        v-if="selectedSource"
+        @click="goToArticles"
+      >
+        查看内容
+      </el-button>
+    </PageSectionHeader>
 
     <el-card shadow="never">
       <el-form
         :inline="true"
         class="toolbar-form"
       >
-        <el-form-item label="新闻源">
+        <el-form-item label="来源">
           <el-select
             v-model="query.source_id"
             clearable
@@ -117,13 +200,18 @@ onMounted(async () => {
         :data="records"
       >
         <el-table-column
+          prop="id"
+          label="记录 ID"
+          width="90"
+        />
+        <el-table-column
           prop="source_name"
-          label="新闻源"
+          label="来源"
           min-width="180"
         />
         <el-table-column
           prop="fetch_mode"
-          label="模式"
+          label="触发方式"
           width="120"
         >
           <template #default="{ row }">
@@ -145,7 +233,7 @@ onMounted(async () => {
         />
         <el-table-column
           prop="new_count"
-          label="入库"
+          label="新增"
           width="90"
         />
         <el-table-column
@@ -155,7 +243,7 @@ onMounted(async () => {
         />
         <el-table-column
           prop="filtered_count"
-          label="通过"
+          label="过滤"
           width="90"
         />
         <el-table-column
@@ -194,7 +282,7 @@ onMounted(async () => {
         </el-table-column>
         <el-table-column
           label="操作"
-          width="100"
+          width="180"
           fixed="right"
         >
           <template #default="{ row }">
@@ -204,6 +292,24 @@ onMounted(async () => {
               @click="openDetail(row)"
             >
               详情
+            </el-button>
+            <el-button
+              v-permission="'news:source:sync'"
+              link
+              type="primary"
+              :loading="retryingId === row.id"
+              :disabled="retryingId === row.id"
+              @click="handleRetry(row)"
+            >
+              重试
+            </el-button>
+            <el-button
+              v-permission="'news:source:list'"
+              link
+              type="primary"
+              @click="goToSourceDetail(row.source_id)"
+            >
+              来源
             </el-button>
           </template>
         </el-table-column>
@@ -223,7 +329,7 @@ onMounted(async () => {
     <el-drawer
       v-model="detailVisible"
       size="48%"
-      title="抓取记录详情"
+      title="采集任务详情"
     >
       <el-skeleton
         v-if="detailLoading"
@@ -235,10 +341,10 @@ onMounted(async () => {
           :column="2"
           border
         >
-          <el-descriptions-item label="新闻源">
+          <el-descriptions-item label="来源">
             {{ detail.source_name || detail.source_id }}
           </el-descriptions-item>
-          <el-descriptions-item label="抓取模式">
+          <el-descriptions-item label="触发方式">
             <StatusTag :status="detail.fetch_mode" />
           </el-descriptions-item>
           <el-descriptions-item label="任务状态">
@@ -262,13 +368,13 @@ onMounted(async () => {
           <el-descriptions-item label="总数">
             {{ detail.total_count }}
           </el-descriptions-item>
-          <el-descriptions-item label="入库">
+          <el-descriptions-item label="新增">
             {{ detail.new_count }}
           </el-descriptions-item>
           <el-descriptions-item label="重复">
             {{ detail.duplicate_count }}
           </el-descriptions-item>
-          <el-descriptions-item label="通过">
+          <el-descriptions-item label="过滤">
             {{ detail.filtered_count }}
           </el-descriptions-item>
           <el-descriptions-item label="错误">

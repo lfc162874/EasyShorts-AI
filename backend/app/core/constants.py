@@ -49,6 +49,57 @@ class NewsStatus(StrEnum):
     ARCHIVED = "ARCHIVED"
 
 
+class AgentRunType(StrEnum):
+    SINGLE_ARTICLE = "single_article"
+    DIGEST = "digest"
+    PUSH_PLAN = "push_plan"
+
+
+class AgentBizType(StrEnum):
+    NEWS = "news"
+    HOT_TOPIC = "hot_topic"
+    DIGEST = "digest"
+
+
+class HotTopicStatus(StrEnum):
+    ACTIVE = "ACTIVE"
+    IGNORED = "IGNORED"
+    ARCHIVED = "ARCHIVED"
+
+
+class DigestReportType(StrEnum):
+    DAILY = "DAILY"
+    WEEKLY = "WEEKLY"
+    TOPIC = "TOPIC"
+
+
+class DigestReportStatus(StrEnum):
+    DRAFT = "DRAFT"
+    GENERATED = "GENERATED"
+    PUBLISHED = "PUBLISHED"
+    ARCHIVED = "ARCHIVED"
+
+
+class PushPlanStatus(StrEnum):
+    PENDING = "PENDING"
+    SCHEDULED = "SCHEDULED"
+    EXECUTED = "EXECUTED"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+
+
+class PushPlanType(StrEnum):
+    IMMEDIATE = "IMMEDIATE"
+    DIGEST = "DIGEST"
+    SCHEDULED = "SCHEDULED"
+
+
+class PushRecordStatus(StrEnum):
+    PENDING = "PENDING"
+    SENT = "SENT"
+    FAILED = "FAILED"
+
+
 class VideoStatus(StrEnum):
     INIT = "INIT"
     SCRIPT_GENERATED = "SCRIPT_GENERATED"

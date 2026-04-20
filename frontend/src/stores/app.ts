@@ -19,6 +19,56 @@ const collectChildPaths = (items: MenuNode[], paths = new Set<string>()): Set<st
   return paths;
 };
 
+const menuTitleOverrides: Record<string, string> = {
+  "/news/list": "内容中心",
+  "/news/sources": "来源管理",
+  "/news/records": "采集记录",
+};
+
+const adminPath = (path: string) => {
+  if (path === "/dashboard") {
+    return "/admin/dashboard";
+  }
+  if (path.startsWith("/system") || path.startsWith("/assets")) {
+    return `/admin${path}`;
+  }
+  return path;
+};
+
+const shouldHideInAdmin = (path?: string | null) => {
+  if (!path) {
+    return false;
+  }
+  return (
+    path.startsWith("/news") ||
+    path.startsWith("/agent") ||
+    path === "/sources" ||
+    path === "/crawl-records" ||
+    path === "/articles"
+  );
+};
+
+const normalizeMenus = (items: MenuNode[]): MenuNode[] =>
+  items.map((item) => {
+    const children = normalizeMenus(item.children ?? []);
+    const path = item.path ? adminPath(item.path) : item.path;
+    const title = item.path ? (menuTitleOverrides[item.path] ?? item.title) : item.title;
+    const hiddenByPath = shouldHideInAdmin(item.path);
+    const visibleChildren = children.filter((child) => !child.hidden);
+    const hidden =
+      item.hidden ||
+      hiddenByPath ||
+      (item.menu_type === "DIRECTORY" && visibleChildren.length === 0);
+
+    return {
+      ...item,
+      path,
+      title,
+      hidden,
+      children,
+    };
+  });
+
 export const useAppStore = defineStore("app", () => {
   const sidebarCollapsed = ref(false);
   const menus = ref<MenuNode[]>([]);
@@ -41,7 +91,7 @@ export const useAppStore = defineStore("app", () => {
 
   const fetchMenus = async () => {
     const response = await listMenus();
-    menus.value = response.data.items;
+    menus.value = normalizeMenus(response.data.items);
   };
 
   return {

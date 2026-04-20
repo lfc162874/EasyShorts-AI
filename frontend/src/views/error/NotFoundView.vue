@@ -14,9 +14,9 @@ const router = useRouter();
       <template #extra>
         <el-button
           type="primary"
-          @click="router.push('/dashboard')"
+          @click="router.push('/')"
         >
-          回到后台首页
+          回到首页
         </el-button>
       </template>
     </el-result>

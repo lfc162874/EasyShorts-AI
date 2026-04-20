@@ -23,7 +23,7 @@ export const useAuthStore = defineStore("auth", () => {
   const token = ref(window.localStorage.getItem(TOKEN_KEY) ?? "");
   const user = ref<UserProfile | null>(readStoredUser());
 
-  const isLoggedIn = computed(() => Boolean(token.value));
+  const isLoggedIn = computed(() => Boolean(window.localStorage.getItem(TOKEN_KEY)));
   const permissions = computed(() => user.value?.permissions ?? []);
   const isSuperAdmin = computed(() => Boolean(user.value?.is_superuser));
 
@@ -53,8 +53,14 @@ export const useAuthStore = defineStore("auth", () => {
   };
 
   const fetchCurrentUser = async () => {
-    if (!token.value) {
+    const storedToken = window.localStorage.getItem(TOKEN_KEY) ?? "";
+    if (!storedToken) {
+      setToken("");
+      setUser(null);
       return null;
+    }
+    if (storedToken !== token.value) {
+      token.value = storedToken;
     }
     const response = await getCurrentUser();
     setUser(response.data);

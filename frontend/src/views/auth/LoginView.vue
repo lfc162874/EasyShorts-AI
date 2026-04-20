@@ -5,12 +5,10 @@ import type { FormInstance, FormRules } from "element-plus";
 import { ElMessage } from "element-plus";
 
 import { useAuthStore } from "@/stores/auth";
-import { useAppStore } from "@/stores/app";
 
 const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
-const appStore = useAppStore();
 
 const loading = ref(false);
 const formRef = ref<FormInstance>();
@@ -33,9 +31,8 @@ const handleLogin = async () => {
   loading.value = true;
   try {
     await authStore.loginAction(form);
-    await appStore.fetchMenus();
     ElMessage.success("登录成功");
-    const redirect = (route.query.redirect as string) || "/dashboard";
+    const redirect = (route.query.redirect as string) || "/";
     await router.push(redirect);
   } finally {
     loading.value = false;
@@ -46,10 +43,10 @@ const handleLogin = async () => {
 <template>
   <div class="login-page">
     <div class="login-copy">
-      <div class="login-badge">Stage 2 Frontend</div>
-      <h1>EasyShorts AI 管理后台</h1>
+      <div class="login-badge">AI Hotspot Monitor</div>
+      <h1>AI 热点监控助手后台</h1>
       <p>
-        现在接入真实后端接口，先把新闻源、新闻列表、抓取记录和内容生成链路跑通。
+        现在接入真实后端接口，先把来源管理、采集记录、内容中心与后续处理链路跑通。
       </p>
 
       <div class="login-panel">
@@ -75,7 +72,7 @@ const handleLogin = async () => {
       <template #header>
         <div>
           <div class="login-card-title">账号登录</div>
-          <div class="login-card-subtitle">登录后进入新闻与内容管理后台</div>
+          <div class="login-card-subtitle">登录后进入采集与热点分析后台</div>
         </div>
       </template>
 

@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
-import { ElMessage } from "element-plus";
+import { computed, onMounted, reactive, ref, watch } from "vue";
+import { ElMessage, ElMessageBox } from "element-plus";
 import type { FormInstance, FormRules } from "element-plus";
+import { useRoute, useRouter } from "vue-router";
 
 import PageSectionHeader from "@/components/PageSectionHeader.vue";
 import StatusTag from "@/components/StatusTag.vue";
 import { newsSourceTypeOptions } from "@/constants/permissions";
 import {
-  getNewsSource,
   listNewsSources,
   saveNewsSource,
   syncNewsSource,
@@ -15,21 +15,24 @@ import {
 import type {
   NewsSourceItem,
   NewsSourceQuery,
+  NewsSourceExtraConfig,
   NewsSourceUpsertForm,
 } from "@/types/news";
-import { formatDateTime, formatJson } from "@/utils/format";
+import { formatDateTime } from "@/utils/format";
+
+const route = useRoute();
+const router = useRouter();
 
 const loading = ref(false);
+const syncingId = ref<number | null>(null);
+const updatingId = ref<number | null>(null);
 const dialogVisible = ref(false);
-const detailVisible = ref(false);
-const detailLoading = ref(false);
 const formRef = ref<FormInstance>();
 const mode = ref<"create" | "edit">("create");
 const editingId = ref<number | null>(null);
 const sources = ref<NewsSourceItem[]>([]);
-const detail = ref<NewsSourceItem | null>(null);
 const total = ref(0);
-const extraText = ref("{}");
+const extraText = ref("");
 
 const query = reactive<NewsSourceQuery>({
   page: 1,
@@ -59,9 +62,91 @@ const rules: FormRules<NewsSourceUpsertForm> = {
   language: [{ required: true, message: "请输入语言标识", trigger: "blur" }],
 };
 
-const dialogTitle = computed(() =>
-  mode.value === "create" ? "新增新闻源" : "编辑新闻源",
-);
+const dialogTitle = computed(() => (mode.value === "create" ? "新增来源" : "编辑来源"));
+
+const buildExtraExample = (sourceType: NewsSourceItem["source_type"]) => {
+  if (sourceType === "WEB") {
+    return JSON.stringify(
+      {
+        mode: "list",
+        article_urls: [
+          "https://example.com/news/1",
+          "https://example.com/news/2",
+        ],
+        max_items: 10,
+        link_patterns: ["/news/", "/blog/"],
+        exclude_link_patterns: ["/tag/", "/category/"],
+      },
+      null,
+      2,
+    );
+  }
+
+  if (sourceType === "MANUAL") {
+    return JSON.stringify(
+      {
+        items: [
+          {
+            title: "OpenAI 发布新功能",
+            link: "https://example.com/article/1",
+            content: "这里是手工导入的正文内容或摘要。",
+            published_at: "2026-04-15T08:00:00Z",
+            author: "EasyShorts",
+            guid: "manual-article-1",
+          },
+        ],
+      },
+      null,
+      2,
+    );
+  }
+
+  return JSON.stringify(
+    {
+      weight: 25,
+    },
+    null,
+    2,
+  );
+};
+
+const extraGuide = computed(() => {
+  if (form.source_type === "WEB") {
+    return {
+      title: "WEB 来源配置",
+      description:
+        "WEB 源支持直接提供文章页地址，也支持通过链接规则自动发现文章。",
+      fields: [
+        "mode",
+        "article_urls / urls",
+        "max_items",
+        "link_patterns",
+        "exclude_link_patterns",
+      ],
+    };
+  }
+
+  if (form.source_type === "MANUAL") {
+    return {
+      title: "MANUAL 来源配置",
+      description: "MANUAL 源支持导入结构化条目数组，适合人工维护热点列表。",
+      fields: [
+        "items / entries",
+        "title",
+        "link / url",
+        "content / description / summary",
+        "published_at / date",
+        "author / creator",
+      ],
+    };
+  }
+
+  return {
+    title: "RSS / ATOM 来源配置",
+    description: "RSS 与 ATOM 源通常只需要一个可选的热度权重。",
+    fields: ["weight"],
+  };
+});
 
 const resetForm = () => {
   editingId.value = null;
@@ -74,7 +159,13 @@ const resetForm = () => {
   form.fetch_interval_minutes = 360;
   form.is_enabled = true;
   form.extra = {};
-  extraText.value = "{}";
+  extraText.value = buildExtraExample(form.source_type);
+};
+
+const parseRouteId = (value: unknown): number | null => {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  const parsed = Number(rawValue);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
 const loadSources = async () => {
@@ -112,30 +203,111 @@ const openEdit = (row: NewsSourceItem) => {
   form.fetch_interval_minutes = row.fetch_interval_minutes;
   form.is_enabled = row.is_enabled;
   form.extra = row.extra ?? {};
-  extraText.value = JSON.stringify(row.extra ?? {}, null, 2);
+  extraText.value = JSON.stringify(
+    row.extra ?? JSON.parse(buildExtraExample(row.source_type)),
+    null,
+    2,
+  );
   dialogVisible.value = true;
 };
 
-const openDetail = async (row: NewsSourceItem) => {
-  detailVisible.value = true;
-  detailLoading.value = true;
-  detail.value = null;
-  try {
-    const response = await getNewsSource(row.id);
-    detail.value = response.data;
-  } catch {
-    ElMessage.error("新闻源详情加载失败");
-  } finally {
-    detailLoading.value = false;
+const maybeOpenEditFromRoute = async () => {
+  const editId = parseRouteId(route.query.edit);
+  if (!editId) {
+    return;
   }
+
+  const target = sources.value.find((item) => item.id === editId);
+  if (!target) {
+    return;
+  }
+
+  openEdit(target);
+
+  const nextQuery = { ...route.query };
+  delete nextQuery.edit;
+  await router.replace({
+    path: route.path,
+    query: nextQuery,
+  });
+};
+
+const goToSourceDetail = (row: NewsSourceItem) => {
+  void router.push(`/news/sources/${row.id}`);
+};
+
+const goToRecords = (row: NewsSourceItem) => {
+  void router.push({
+    path: "/news/records",
+    query: { source_id: String(row.id) },
+  });
+};
+
+const goToArticles = (row: NewsSourceItem) => {
+  void router.push({
+    path: "/news/list",
+    query: { source_id: String(row.id) },
+  });
 };
 
 const handleSync = async (row: NewsSourceItem) => {
+  syncingId.value = row.id;
   try {
     const response = await syncNewsSource(row.id);
-    ElMessage.success(`已提交同步任务 #${response.data.id}：${row.name}`);
+    const task = response.data;
+    if (task.status === "SUCCESS" && task.result) {
+      const result = task.result as Record<string, unknown>;
+      const newCount = Number(result.new_count ?? 0);
+      const duplicateCount = Number(result.duplicate_count ?? 0);
+      const filteredCount = Number(result.filtered_count ?? result.rejected_count ?? 0);
+      ElMessage.success(
+        `已执行 ${row.name}，新增 ${newCount} 条，重复 ${duplicateCount} 条，过滤 ${filteredCount} 条`,
+      );
+    } else {
+      ElMessage.success(`已提交采集任务 #${task.id}：${row.name}`);
+    }
+    await loadSources();
   } catch {
     // 请求层会给出具体错误，这里只负责吞掉未处理的异常。
+  } finally {
+    syncingId.value = null;
+  }
+};
+
+const handleToggleEnabled = async (row: NewsSourceItem) => {
+  const nextEnabled = !row.is_enabled;
+  const actionText = nextEnabled ? "启用" : "停用";
+
+  try {
+    await ElMessageBox.confirm(
+      `确认${actionText}来源「${row.name}」吗？`,
+      `${actionText}来源`,
+      { type: "warning" },
+    );
+  } catch {
+    return;
+  }
+
+  updatingId.value = row.id;
+  try {
+    await saveNewsSource({
+      id: row.id,
+      source_key: row.source_key,
+      name: row.name,
+      source_type: row.source_type,
+      url: row.url,
+      category: row.category,
+      language: row.language,
+      fetch_interval_minutes: row.fetch_interval_minutes,
+      is_enabled: nextEnabled,
+      extra: row.extra,
+    });
+    ElMessage.success(`来源已${actionText}`);
+    await loadSources();
+  } catch {
+    // 请求层会处理详细错误提示。
+  } finally {
+    updatingId.value = null;
   }
 };
 
@@ -145,63 +317,100 @@ const handleSubmit = async () => {
     return;
   }
 
-  let parsedExtra: Record<string, unknown> | null = null;
+  let parsedExtra: NewsSourceExtraConfig | null = null;
   try {
     parsedExtra = extraText.value.trim()
-      ? (JSON.parse(extraText.value) as Record<string, unknown>)
+      ? (JSON.parse(extraText.value) as NewsSourceExtraConfig)
       : null;
   } catch {
     ElMessage.error("扩展字段 JSON 格式不正确");
     return;
   }
 
+  const sourceKey = form.source_key.trim().toLowerCase();
+  const name = form.name.trim();
+  const url = form.url.trim();
+  const category = (form.category ?? "").trim();
+  const language = form.language.trim();
+
   const payload: NewsSourceUpsertForm =
     mode.value === "create"
       ? {
-          source_key: form.source_key,
-          name: form.name,
+          source_key: sourceKey,
+          name,
           source_type: form.source_type,
-          url: form.url,
-          category: form.category || null,
-          language: form.language,
+          url,
+          category: category || null,
+          language,
           fetch_interval_minutes: form.fetch_interval_minutes,
           is_enabled: form.is_enabled,
           extra: parsedExtra,
         }
       : {
           id: editingId.value ?? undefined,
-          source_key: form.source_key,
-          name: form.name,
+          source_key: sourceKey,
+          name,
           source_type: form.source_type,
-          url: form.url,
-          category: form.category || null,
-          language: form.language,
+          url,
+          category: category || null,
+          language,
           fetch_interval_minutes: form.fetch_interval_minutes,
           is_enabled: form.is_enabled,
           extra: parsedExtra,
         };
 
-  await saveNewsSource(payload);
-  ElMessage.success(mode.value === "create" ? "新闻源已创建" : "新闻源已更新");
-  dialogVisible.value = false;
-  await loadSources();
+  try {
+    await saveNewsSource(payload);
+    ElMessage.success(mode.value === "create" ? "来源已创建" : "来源已更新");
+    dialogVisible.value = false;
+    await loadSources();
+  } catch {
+    // 请求层会给出具体错误，这里保持对话框打开，方便用户修正配置。
+  }
 };
 
-onMounted(loadSources);
+const fillExtraExample = () => {
+  extraText.value = buildExtraExample(form.source_type);
+};
+
+watch(
+  () => form.source_type,
+  (next, prev) => {
+    if (mode.value === "create") {
+      extraText.value = buildExtraExample(next);
+      return;
+    }
+
+    if (!prev) {
+      return;
+    }
+
+    const currentExtra = extraText.value.trim();
+    const previousExample = buildExtraExample(prev).trim();
+    if (!currentExtra || currentExtra === previousExample) {
+      extraText.value = buildExtraExample(next);
+    }
+  },
+);
+
+onMounted(async () => {
+  await loadSources();
+  await maybeOpenEditFromRoute();
+});
 </script>
 
 <template>
   <div class="page-shell">
     <PageSectionHeader
-      title="新闻源管理"
-      description="这里维护 AI 新闻数据源，支持新增、编辑和手动同步。"
+      title="来源管理"
+      description="维护系统监控的 AI 站点、RSS 与手动来源，并可直接执行采集。"
     >
       <el-button
         v-permission="'news:source:create'"
         type="primary"
         @click="openCreate"
       >
-        新增新闻源
+        新增来源
       </el-button>
     </PageSectionHeader>
 
@@ -289,7 +498,7 @@ onMounted(loadSources);
         />
         <el-table-column
           prop="fetch_interval_minutes"
-          label="抓取间隔"
+          label="抓取频率"
           width="120"
         >
           <template #default="{ row }">
@@ -314,6 +523,15 @@ onMounted(loadSources);
           </template>
         </el-table-column>
         <el-table-column
+          prop="last_success_at"
+          label="最近成功"
+          min-width="180"
+        >
+          <template #default="{ row }">
+            {{ formatDateTime(row.last_success_at) }}
+          </template>
+        </el-table-column>
+        <el-table-column
           prop="last_error_message"
           label="最近错误"
           min-width="240"
@@ -330,7 +548,7 @@ onMounted(loadSources);
         </el-table-column>
         <el-table-column
           label="操作"
-          width="240"
+          width="340"
           fixed="right"
         >
           <template #default="{ row }">
@@ -338,9 +556,25 @@ onMounted(loadSources);
               v-permission="'news:source:list'"
               link
               type="primary"
-              @click="openDetail(row)"
+              @click="goToSourceDetail(row)"
             >
               详情
+            </el-button>
+            <el-button
+              v-permission="'news:fetch-record:list'"
+              link
+              type="primary"
+              @click="goToRecords(row)"
+            >
+              记录
+            </el-button>
+            <el-button
+              v-permission="'news:list'"
+              link
+              type="primary"
+              @click="goToArticles(row)"
+            >
+              内容
             </el-button>
             <el-button
               v-permission="'news:source:update'"
@@ -354,9 +588,21 @@ onMounted(loadSources);
               v-permission="'news:source:sync'"
               link
               type="primary"
+              :loading="syncingId === row.id"
+              :disabled="syncingId === row.id"
               @click="handleSync(row)"
             >
-              同步
+              抓取
+            </el-button>
+            <el-button
+              v-permission="'news:source:update'"
+              link
+              type="primary"
+              :loading="updatingId === row.id"
+              :disabled="updatingId === row.id"
+              @click="handleToggleEnabled(row)"
+            >
+              {{ row.is_enabled ? "停用" : "启用" }}
             </el-button>
           </template>
         </el-table-column>
@@ -393,6 +639,7 @@ onMounted(loadSources);
             v-model="form.source_key"
             :disabled="mode === 'edit'"
             placeholder="openai_blog"
+            @blur="form.source_key = form.source_key.trim().toLowerCase()"
           />
         </el-form-item>
         <el-form-item
@@ -452,12 +699,40 @@ onMounted(loadSources);
           <el-switch v-model="form.is_enabled" />
         </el-form-item>
         <el-form-item label="扩展配置">
-          <el-input
-            v-model="extraText"
-            :rows="6"
-            type="textarea"
-            placeholder='{"weight": 25}'
-          />
+          <div style="width: 100%">
+            <el-alert
+              :title="extraGuide.title"
+              :description="extraGuide.description"
+              type="info"
+              :closable="false"
+              show-icon
+            />
+            <div
+              class="tag-row"
+              style="margin: 10px 0 12px"
+            >
+              <el-tag
+                v-for="field in extraGuide.fields"
+                :key="field"
+                effect="plain"
+              >
+                {{ field }}
+              </el-tag>
+              <el-button
+                link
+                type="primary"
+                @click="fillExtraExample"
+              >
+                插入示例配置
+              </el-button>
+            </div>
+            <el-input
+              v-model="extraText"
+              :rows="8"
+              type="textarea"
+              :placeholder="buildExtraExample(form.source_type)"
+            />
+          </div>
         </el-form-item>
       </el-form>
 
@@ -471,72 +746,5 @@ onMounted(loadSources);
         </el-button>
       </template>
     </el-dialog>
-
-    <el-drawer
-      v-model="detailVisible"
-      size="48%"
-      title="新闻源详情"
-    >
-      <el-skeleton
-        v-if="detailLoading"
-        :rows="8"
-        animated
-      />
-      <div v-else-if="detail">
-        <el-descriptions
-          :column="2"
-          border
-        >
-          <el-descriptions-item label="来源标识">
-            {{ detail.source_key }}
-          </el-descriptions-item>
-          <el-descriptions-item label="来源名称">
-            {{ detail.name }}
-          </el-descriptions-item>
-          <el-descriptions-item label="来源类型">
-            <StatusTag :status="detail.source_type" />
-          </el-descriptions-item>
-          <el-descriptions-item label="启用状态">
-            <StatusTag :status="detail.is_enabled ? 'ACTIVE' : 'DISABLED'" />
-          </el-descriptions-item>
-          <el-descriptions-item label="分类">
-            {{ detail.category || "-" }}
-          </el-descriptions-item>
-          <el-descriptions-item label="语言">
-            {{ detail.language }}
-          </el-descriptions-item>
-          <el-descriptions-item label="抓取地址" :span="2">
-            <a
-              :href="detail.url"
-              target="_blank"
-              rel="noreferrer"
-            >
-              {{ detail.url }}
-            </a>
-          </el-descriptions-item>
-          <el-descriptions-item label="抓取间隔">
-            {{ detail.fetch_interval_minutes }} 分钟
-          </el-descriptions-item>
-          <el-descriptions-item label="最近抓取">
-            {{ formatDateTime(detail.last_fetched_at) }}
-          </el-descriptions-item>
-          <el-descriptions-item label="最近成功">
-            {{ formatDateTime(detail.last_success_at) }}
-          </el-descriptions-item>
-          <el-descriptions-item label="更新时间">
-            {{ formatDateTime(detail.updated_at) }}
-          </el-descriptions-item>
-          <el-descriptions-item
-            label="最近错误"
-            :span="2"
-          >
-            {{ detail.last_error_message || "暂无错误" }}
-          </el-descriptions-item>
-        </el-descriptions>
-
-        <el-divider content-position="left">扩展配置</el-divider>
-        <pre class="news-pre">{{ formatJson(detail.extra) }}</pre>
-      </div>
-    </el-drawer>
   </div>
 </template>
