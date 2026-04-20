@@ -1,164 +1,155 @@
 # EasyShorts AI
 
-EasyShorts AI 是一个面向 AI 资讯场景的短视频自动化生产与发布项目，目标是把新闻采集、内容筛选、脚本生成、配音字幕、视频合成、自动发布和数据分析串成一条可持续运行的工作链路。
+EasyShorts AI 是一个面向 AI 资讯场景的智能处理平台，围绕“来源采集 -> 内容处理 -> Agent 分析 -> 热点聚合 -> 推送计划”搭了一条可观测、可追踪、可配置的工作流。
 
-当前仓库处于文档优先阶段，已经完成需求、技术架构以及前后端开发规范整理，适合作为后续代码落地、项目拆分和开源展示的基础。
+当前仓库已经不再停留在文档草案阶段，而是包含一套可运行的前后端管理后台：你可以维护新闻来源、查看采集记录、处理内容、触发 Agent 运行、查看热点池和推送计划，并通过系统配置接入真实模型与推送渠道。
 
-## 项目目标
+## 界面预览
 
-- 自动抓取最新 AI 行业新闻与资讯
-- 基于大模型生成短视频文案、标题、摘要和标签
-- 自动生成配音、字幕和短视频成片
-- 支持抖音、快手等平台的自动发布
-- 构建具备扩展性的多 Agent 内容生产系统
+### 平台首页
 
-## 业务流程
+![平台首页](./doc/screenshots/home.png)
+
+### AI 热点监控
+
+![AI 热点监控](./doc/screenshots/hot-monitor.png)
+
+### 来源管理
+
+![来源管理](./doc/screenshots/sources.png)
+
+### 内容中心
+
+![内容中心](./doc/screenshots/news-list.png)
+
+### Agent 运行中心
+
+![Agent 运行中心](./doc/screenshots/agent-runs.png)
+
+### 推送计划
+
+![推送计划](./doc/screenshots/push-plans.png)
+
+## 当前核心能力
+
+- 来源管理：支持 `RSS`、`ATOM`、`WEB`、`MANUAL` 四类新闻源，支持手动同步和定时采集。
+- 内容处理：对采集内容进行清洗、去重、翻译、摘要、标签分类和质量过滤。
+- Agent 智能处理：基于 AgentScope 串起分类、摘要、热点识别、推送规划等处理步骤。
+- 热点池与推送：沉淀热点主题、生成推送计划、记录执行结果，支持 webhook 和 email 等渠道扩展。
+- 基础设施：内置 JWT 登录、RBAC 权限、菜单管理、系统配置、任务中心、日志中心和文件上传。
+
+## 工作流
 
 ```text
-定时任务触发
-  -> 抓取 AI 新闻
-  -> 筛选、翻译与摘要
-  -> 生成视频脚本
-  -> 生成配音与字幕
-  -> 合成短视频
-  -> 上传媒资
-  -> 自动发布
-  -> 统计与分析
+新闻来源
+  -> 采集记录
+  -> 内容中心
+  -> 内容处理
+  -> Agent 运行
+  -> 热点池
+  -> 推送计划
+  -> 推送记录
 ```
 
-## 规划中的核心能力
+## 技术栈
 
-### 1. 新闻采集
-
-- RSS 与站点采集
-- 数据去重
-- 定时更新
-- 新闻入库
-
-### 2. 内容生成
-
-- 热点筛选
-- LLM 摘要与脚本生成
-- 标题与标签生成
-- 多风格内容生成
-
-### 3. 媒体生成
-
-- AI 配音
-- 字幕同步
-- 图片或素材生成
-- FFmpeg 视频合成
-
-### 4. 自动发布
-
-- 平台账号接入
-- 定时发布
-- 标题、标签自动填充
-- 发布记录追踪
-
-### 5. 数据分析
-
-- 播放量、互动量统计
-- 趋势分析
-- 报表生成
-
-## 技术路线
-
-根据当前技术架构文档，项目计划采用以下方案：
-
-- 前端：Vue 3 + Vite + TypeScript + Element Plus
-- 后端：FastAPI
-- Agent 编排：AgentScope
+- 前端：Vue 3 + Vite + TypeScript + Element Plus + Pinia + Vue Router
+- 后端：FastAPI + SQLAlchemy + Alembic
 - 异步任务：Celery + Redis
 - 数据库：PostgreSQL
-- 对象存储：阿里云 OSS
-- 视频处理：FFmpeg
-- 认证与权限：JWT + RBAC
-- 部署：Docker + Nginx
+- 智能处理：AgentScope
+- 模型默认值：`qwen3.5-plus`
+- 部署与运行：Docker / 本机开发环境
 
-## 仓库当前状态
+## 本地启动
 
-当前仓库已进入“文档 + 后端阶段一基础工程”阶段。
+### 1. 启动后端
 
-已完成：
+```bash
+cd /Users/lfc/softwear/EasyShortsAI
+python3 -m venv .venv
+.venv/bin/pip install -r backend/requirements-dev.txt
+cp backend/.env.example backend/.env
+cd backend
+../.venv/bin/alembic upgrade head
+../.venv/bin/python scripts/bootstrap_admin.py
+../.venv/bin/uvicorn app.main:app --reload --port 8000
+```
 
-- 产品需求文档
-- 技术架构文档
-- 前端开发规范文档
-- 后端开发规范文档
-- 开发计划文档
-- `backend/` 阶段一基础工程
-  - FastAPI 工程骨架
-  - SQLAlchemy 模型与 Alembic 初始化
-  - JWT 鉴权与 RBAC 基础模型
-  - 系统配置、平台账号、上传、日志、任务基础接口
-  - Docker / Celery / Redis / PostgreSQL 本地运行配置
+默认数据库连接建议使用：
 
-下一步建议优先落地：
+```text
+postgresql+psycopg://postgres:123456@localhost:5432/easy_shorts
+```
 
-1. 补齐阶段二的新闻与内容链路
-2. 输出详细 API 接口设计文档
-3. 补齐状态机文档与任务调度设计
-4. 搭建前端管理后台骨架
-5. 实现平台发布与媒资处理最小闭环
+如果要启用真实模型能力，在 `backend/.env` 中补充：
+
+```text
+DASHSCOPE_API_KEY=你的 DashScope Key
+AGENT_DEFAULT_PROVIDER=dashscope
+AGENT_DEFAULT_MODEL_NAME=qwen3.5-plus
+```
+
+如果要跑异步任务，还需要另外启动：
+
+```bash
+cd /Users/lfc/softwear/EasyShortsAI/backend
+../.venv/bin/celery -A app.core.celery_app.celery_app worker -l info -Q system_queue,news_queue,content_queue
+```
+
+### 2. 启动前端
+
+```bash
+cd /Users/lfc/softwear/EasyShortsAI/frontend
+npm install
+npm run dev
+```
+
+启动后可访问：
+
+- 前端：`http://localhost:5173/`
+- 后端接口文档：`http://127.0.0.1:8000/docs`
+- 健康检查：`http://127.0.0.1:8000/easy-shorts/health`
+
+## 默认账号
+
+- 管理员：`admin / Admin@123456`
+- 运营账号：`operator / Operator@123456`
+
+## 仓库结构
+
+```text
+EasyShortsAI/
+  backend/        FastAPI、Celery、Agent、数据模型与测试
+  frontend/       Vue 3 管理后台
+  doc/            需求、架构、接口、开发计划与截图
+```
 
 ## 文档索引
 
 - [需求文档](./doc/需求文档.md)
+- [需求文档 v2](./doc/需求文档v2.md)
+- [需求文档 v3](./doc/需求文档v3.md)
 - [技术架构文档](./doc/技术架构文档.md)
-- [前端开发规范文档](./doc/前端开发规范文档.md)
-- [后端开发规范文档](./doc/后端开发规范文档.md)
+- [开发计划文档](./doc/开发计划文档.md)
 - [后端接口文档](./doc/后端接口文档.md)
+- [采集开发文档](./doc/采集开发文档.md)
+- [Agent 智能处理模块](./doc/Agent智能处理模块.md)
 
-## MVP 范围
+## 当前进度
 
-首个可运行版本建议聚焦以下能力：
+目前这套仓库已经完成了以下落地部分：
 
-- AI 新闻抓取
-- 文案生成
-- 视频自动生成
-- 抖音自动发布
-- 定时任务调度
+- 后端基础设施与 RBAC
+- 新闻来源、采集记录、内容中心
+- 内容处理链路
+- Agent 运行、热点池、推送计划与推送记录
+- 前端管理后台主要页面
+- 文档、接口、测试与默认数据初始化
 
-## 建议中的目录结构
+后续如果继续往前推进，最自然的方向会是：
 
-当前仓库已完成后端阶段一基础目录，后续可以按如下方式继续扩展：
-
-```text
-EasyShortsAI/
-  README.md
-  doc/
-  backend/
-    app/
-    tests/
-  frontend/
-    src/
-  scripts/
-  deploy/
-```
-
-## 开发建议
-
-如果你准备从文档进入实现阶段，推荐按下面的顺序推进：
-
-1. 先补齐数据库表结构、任务状态和接口契约
-2. 初始化 FastAPI 后端骨架与基础配置
-3. 搭建 Vue 3 管理后台基础框架
-4. 先打通一条最小链路：新闻入库 -> 脚本生成 -> 视频任务 -> 发布记录
-5. 再逐步补齐 Agent 编排、配音、视频合成和平台发布能力
-
-## 风险与注意事项
-
-- 平台发布能力需要优先评估官方开放平台和授权方式
-- 自动发布涉及内容合规、账号安全和风控问题
-- 视频生成链路较长，需要重点设计可重试、可追踪和可人工介入机制
-- 文档中的能力边界应在正式编码前进一步落实为接口与状态定义
-
-## 项目定位
-
-这个项目既可以作为 AI Agent 工程实践，也可以作为自动化内容生产系统的原型工程。适合用于：
-
-- AI 应用项目练手
-- 自媒体自动化方向探索
-- Agent、多模态、工作流编排能力展示
-- 开源项目或面试项目包装
+1. 完善更多来源站点的采集适配器
+2. 接入更稳定的登录态 / 反爬方案
+3. 增强热点聚类和推送策略
+4. 补齐推送渠道的真实配置与运维能力
