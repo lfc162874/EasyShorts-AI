@@ -1,0 +1,519 @@
+// Prisma Schema for EasyShorts AI
+// 与原 Python 后端 SQLAlchemy 模型完全对齐
+// 使用 @map() 保持 snake_case 表名和字段名
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// RBAC: 用户、角色、菜单
+// ============================================================
+
+model User {
+  id            Int       @id @default(autoincrement()) @map("id")
+  username      String    @db.VarChar(64) @map("username")
+  email         String?   @db.VarChar(255) @map("email")
+  phone         String?   @db.VarChar(32) @map("phone")
+  nickname      String?   @db.VarChar(128) @map("nickname")
+  hashedPassword String   @db.VarChar(255) @map("hashed_password")
+  status        String    @default("ACTIVE") @db.VarChar(32) @map("status")
+  isSuperuser   Boolean   @default(false) @map("is_superuser")
+  lastLoginAt   DateTime? @map("last_login_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  roles UserRole[]
+
+  @@unique([username])
+  @@unique([email])
+  @@map("users")
+}
+
+model Role {
+  id          Int      @id @default(autoincrement()) @map("id")
+  name        String   @db.VarChar(128) @map("name")
+  displayName String   @db.VarChar(128) @map("display_name")
+  code        String?  @db.VarChar(64) @map("code")
+  description String?  @map("description")
+  isSystem    Boolean  @default(false) @map("is_system")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  menus RoleMenu[]
+  userRoles UserRole[]
+
+  @@unique([code])
+  @@map("roles")
+}
+
+model Menu {
+  id             Int      @id @default(autoincrement()) @map("id")
+  parentId       Int?     @map("parent_id")
+  name           String   @db.VarChar(128) @map("name")
+  title          String   @db.VarChar(128) @map("title")
+  path           String?  @db.VarChar(255) @map("path")
+  component      String?  @db.VarChar(255) @map("component")
+  icon           String?  @db.VarChar(64) @map("icon")
+  permissionCode String?  @db.VarChar(128) @map("permission_code")
+  menuType       String   @default("MENU") @db.VarChar(32) @map("menu_type")
+  sortOrder      Int      @default(0) @map("sort_order")
+  hidden         Boolean  @default(false) @map("hidden")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  parent   Menu?          @relation("MenuHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children Menu[]         @relation("MenuHierarchy")
+  roles    RoleMenu[]
+
+  @@map("menus")
+}
+
+model UserRole {
+  userId Int
+  roleId Int
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model RoleMenu {
+  roleId Int
+  menuId Int
+
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  menu Menu @relation(fields: [menuId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, menuId])
+  @@map("role_menus")
+}
+
+// ============================================================
+// Business: 新闻、来源、采集记录、视频、发布记录
+// ============================================================
+
+model NewsSource {
+  id                  Int       @id @default(autoincrement())
+  sourceKey           String    @db.VarChar(128) @map("source_key")
+  name                String    @db.VarChar(128) @map("name")
+  sourceType          String    @default("RSS") @db.VarChar(32) @map("source_type")
+  url                 String    @db.VarChar(500) @map("url")
+  category            String?   @db.VarChar(64) @map("category")
+  language            String    @default("en") @db.VarChar(16) @map("language")
+  fetchIntervalMinutes Int      @default(360) @map("fetch_interval_minutes")
+  isEnabled           Boolean   @default(true) @map("is_enabled")
+  lastFetchedAt       DateTime? @map("last_fetched_at")
+  lastSuccessAt       DateTime? @map("last_success_at")
+  lastErrorMessage    String?   @map("last_error_message")
+  extra               Json?     @map("extra")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  news News[]
+  fetchRecords NewsFetchRecord[]
+
+  @@unique([sourceKey])
+  @@unique([url])
+  @@map("news_sources")
+}
+
+model News {
+  id                Int       @id @default(autoincrement())
+  title             String    @db.VarChar(500) @map("title")
+  content           String?   @db.Text @map("content")
+  source            String?   @db.VarChar(255) @map("source")
+  sourceId          Int?      @map("source_id")
+  sourceUrl         String?   @db.VarChar(500) @map("source_url")
+  url               String?   @db.VarChar(500) @map("url")
+  publishTime       DateTime? @map("publish_time")
+  status            String    @default("NEW") @db.VarChar(32) @map("status")
+  dedupHash         String?   @db.VarChar(128) @map("dedup_hash")
+  category          String?   @db.VarChar(64) @map("category")
+  hotScore          Int       @default(0) @map("hot_score")
+  language          String    @default("en") @db.VarChar(16) @map("language")
+  summary           String?   @db.Text @map("summary")
+  translatedTitle   String?   @db.VarChar(500) @map("translated_title")
+  translatedContent String?   @db.Text @map("translated_content")
+  script            String?   @db.Text @map("script")
+  tags              Json?     @map("tags")
+  filterReason      String?   @db.Text @map("filter_reason")
+  rawMetadata       Json?     @map("raw_metadata")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  source NewsSource? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+
+  @@unique([url])
+  @@map("news")
+}
+
+model NewsFetchRecord {
+  id              Int       @id @default(autoincrement())
+  sourceId        Int       @map("source_id")
+  taskJobId       Int?      @map("task_job_id")
+  requestId       String?   @db.VarChar(64) @map("request_id")
+  fetchMode       String    @db.VarChar(32) @map("fetch_mode")
+  status          String    @db.VarChar(32) @map("status")
+  totalCount      Int       @default(0) @map("total_count")
+  newCount        Int       @default(0) @map("new_count")
+  duplicateCount  Int       @default(0) @map("duplicate_count")
+  filteredCount   Int       @default(0) @map("filtered_count")
+  errorCount      Int       @default(0) @map("error_count")
+  errorMessage    String?   @db.Text @map("error_message")
+  startedAt       DateTime? @map("started_at")
+  finishedAt      DateTime? @map("finished_at")
+  extra           Json?     @map("extra")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  source NewsSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  taskJob TaskJob?  @relation(fields: [taskJobId], references: [id], onDelete: SetNull)
+
+  @@map("news_fetch_records")
+}
+
+model Video {
+  id          Int       @id @default(autoincrement())
+  title       String?   @db.VarChar(255) @map("title")
+  script      String?   @db.Text @map("script")
+  videoUrl    String?   @db.VarChar(500) @map("video_url")
+  status      String    @default("INIT") @db.VarChar(32) @map("status")
+  newsId      Int?      @map("news_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@map("videos")
+}
+
+model PublishRecord {
+  id             Int       @id @default(autoincrement())
+  platform       String    @db.VarChar(50) @map("platform")
+  videoId        Int       @map("video_id")
+  status         String    @default("PENDING") @db.VarChar(32) @map("status")
+  publishTime    DateTime? @map("publish_time")
+  platformResult String?  @db.Text @map("platform_result")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@map("publish_records")
+}
+
+// ============================================================
+// Agent: 运行记录、步骤、热点、推送计划、简报等
+// ============================================================
+
+model AgentRun {
+  id             Int       @id @default(autoincrement())
+  parentRunId    Int?      @map("parent_run_id")
+  taskJobId      Int?      @map("task_job_id")
+  runType        String    @db.VarChar(32) @map("run_type")
+  bizType        String    @db.VarChar(64) @map("biz_type")
+  bizId          String    @db.VarChar(64) @map("biz_id")
+  status         String    @default("PENDING") @db.VarChar(32) @map("status")
+  currentStep    String?   @db.VarChar(64) @map("current_step")
+  modelName      String    @db.VarChar(128) @map("model_name")
+  promptVersion  String    @db.VarChar(32) @map("prompt_version")
+  inputSummary   String?   @db.Text @map("input_summary")
+  outputSummary  String?   @db.Text @map("output_summary")
+  payload        Json?     @map("payload")
+  result         Json?     @map("result")
+  triggeredBy    Int?      @map("triggered_by")
+  requestId      String?   @db.VarChar(64) @map("request_id")
+  errorMessage   String?   @db.Text @map("error_message")
+  startedAt      DateTime? @map("started_at")
+  finishedAt     DateTime? @map("finished_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  steps AgentRunStep[]
+  artifacts AgentRunArtifact[]
+  pushPlans PushPlan[]
+  digestReports DigestReport[]
+
+  @@map("agent_runs")
+}
+
+model AgentRunStep {
+  id            Int       @id @default(autoincrement())
+  runId         Int       @map("run_id")
+  stepCode      String    @db.VarChar(64) @map("step_code")
+  agentName     String    @db.VarChar(128) @map("agent_name")
+  stepOrder     Int       @map("step_order")
+  status        String    @db.VarChar(32) @map("status")
+  modelName     String    @db.VarChar(128) @map("model_name")
+  promptVersion String    @db.VarChar(32) @map("prompt_version")
+  inputSummary  String?   @db.Text @map("input_summary")
+  outputSummary String?  @db.Text @map("output_summary")
+  payload       Json?     @map("payload")
+  result        Json?     @map("result")
+  errorMessage  String?   @db.Text @map("error_message")
+  startedAt     DateTime? @map("started_at")
+  finishedAt    DateTime? @map("finished_at")
+  durationMs    Int?      @map("duration_ms")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  run AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, stepCode])
+  @@map("agent_run_steps")
+}
+
+model AgentRunArtifact {
+  id           Int      @id @default(autoincrement())
+  runId        Int      @map("run_id")
+  stepId       Int?     @map("step_id")
+  artifactType String   @db.VarChar(64) @map("artifact_type")
+  artifactKey  String   @db.VarChar(128) @map("artifact_key")
+  contentJson  Json?    @map("content_json")
+  contentText  String?  @db.Text @map("content_text")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  run AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, stepId, artifactKey])
+  @@map("agent_run_artifacts")
+}
+
+model HotTopic {
+  id              Int       @id @default(autoincrement())
+  topicKey        String    @db.VarChar(128) @map("topic_key")
+  title           String    @db.VarChar(500) @map("title")
+  summary         String?   @db.Text @map("summary")
+  category        String?   @db.VarChar(64) @map("category")
+  tags            Json?     @map("tags")
+  score           Int       @default(0) @map("score")
+  priority        String    @default("MEDIUM") @db.VarChar(32) @map("priority")
+  reason          String?   @db.Text @map("reason")
+  trend           String?   @db.VarChar(64) @map("trend")
+  status          String    @default("ACTIVE") @db.VarChar(32) @map("status")
+  modelName       String    @db.VarChar(128) @map("model_name")
+  promptVersion   String    @db.VarChar(32) @map("prompt_version")
+  newsCount       Int       @default(0) @map("news_count")
+  sourceCount     Int       @default(0) @map("source_count")
+  primaryNewsId   Int?      @map("primary_news_id")
+  extra           Json?     @map("extra")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  items HotTopicItem[]
+  pushPlans PushPlan[]
+
+  @@unique([topicKey])
+  @@map("hot_topics")
+}
+
+model HotTopicItem {
+  topicId   Int  @map("topic_id")
+  newsId    Int  @map("news_id")
+  sourceId  Int? @map("source_id")
+  weight    Int  @default(0) @map("weight")
+  isPrimary Boolean @default(false) @map("is_primary")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  topic HotTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@id([topicId, newsId])
+  @@map("hot_topic_items")
+}
+
+model PushPlan {
+  id            Int       @id @default(autoincrement())
+  bizType       String    @db.VarChar(64) @map("biz_type")
+  bizId         String    @db.VarChar(64) @map("biz_id")
+  runId         Int?      @map("run_id")
+  topicId       Int?      @map("topic_id")
+  pushNow       Boolean   @default(false) @map("push_now")
+  priority      String    @default("LOW") @db.VarChar(32) @map("priority")
+  pushType      String    @default("SCHEDULED") @db.VarChar(32) @map("push_type")
+  channels      Json?     @map("channels")
+  plannedAt     DateTime? @map("planned_at")
+  status        String    @default("PENDING") @db.VarChar(32) @map("status")
+  reason        String?   @db.Text @map("reason")
+  modelName     String    @db.VarChar(128) @map("model_name")
+  promptVersion String    @db.VarChar(32) @map("prompt_version")
+  executedAt    DateTime? @map("executed_at")
+  extra         Json?     @map("extra")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  run AgentRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+  topic HotTopic? @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  records PushRecord[]
+
+  @@map("push_plans")
+}
+
+model DigestReport {
+  id            Int       @id @default(autoincrement())
+  reportType    String    @default("DAILY") @db.VarChar(32) @map("report_type")
+  reportDate    DateTime @db.Date @map("report_date")
+  title         String    @db.VarChar(500) @map("title")
+  summary       String?   @db.Text @map("summary")
+  content       String?   @db.Text @map("content")
+  highlights    Json?     @map("highlights")
+  status        String    @default("DRAFT") @db.VarChar(32) @map("status")
+  topicCount    Int       @default(0) @map("topic_count")
+  modelName     String    @db.VarChar(128) @map("model_name")
+  promptVersion String    @db.VarChar(32) @map("prompt_version")
+  runId         Int?      @map("run_id")
+  taskJobId     Int?      @map("task_job_id")
+  publishedAt   DateTime? @map("published_at")
+  extra         Json?     @map("extra")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  run AgentRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+  records PushRecord[]
+
+  @@unique([reportType, reportDate])
+  @@map("digest_reports")
+}
+
+model PushRecord {
+  id            Int       @id @default(autoincrement())
+  planId        Int?      @map("plan_id")
+  digestId      Int?      @map("digest_id")
+  topicId       Int?      @map("topic_id")
+  channel       String    @db.VarChar(64) @map("channel")
+  status        String    @default("PENDING") @db.VarChar(32) @map("status")
+  requestId     String?   @db.VarChar(64) @map("request_id")
+  payload       Json?     @map("payload")
+  result        Json?     @map("result")
+  errorMessage String?   @db.Text @map("error_message")
+  pushedAt      DateTime? @map("pushed_at")
+  extra         Json?     @map("extra")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  plan PushPlan? @relation(fields: [planId], references: [id], onDelete: SetNull)
+  digest DigestReport? @relation(fields: [digestId], references: [id], onDelete: SetNull)
+
+  @@map("push_records")
+}
+
+// ============================================================
+// System: 日志、任务、文件、配置等
+// ============================================================
+
+model OperationLog {
+  id           Int       @id @default(autoincrement())
+  module       String    @db.VarChar(64) @map("module")
+  action       String    @db.VarChar(64) @map("action")
+  bizType      String?   @db.VarChar(64) @map("biz_type")
+  bizId        String?   @db.VarChar(64) @map("biz_id")
+  operatorId   Int?      @map("operator_id")
+  operatorName String?  @db.VarChar(128) @map("operator_name")
+  requestId    String?   @db.VarChar(64) @map("request_id")
+  method       String?   @db.VarChar(16) @map("method")
+  path         String?   @db.VarChar(255) @map("path")
+  ipAddress    String?   @db.VarChar(64) @map("ip_address")
+  status       String    @default("SUCCESS") @db.VarChar(32) @map("status")
+  message      String?   @db.VarChar(255) @map("message")
+  details      Json?     @map("details")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@map("operation_logs")
+}
+
+model ErrorLog {
+  id           Int       @id @default(autoincrement())
+  requestId    String?   @db.VarChar(64) @map("request_id")
+  path         String?   @db.VarChar(255) @map("path")
+  method       String?   @db.VarChar(16) @map("method")
+  userId       Int?      @map("user_id")
+  errorCode    Int       @map("error_code")
+  errorType    String    @db.VarChar(128) @map("error_type")
+  errorMessage String    @db.Text @map("error_message")
+  stackTrace   String?   @db.Text @map("stack_trace")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@map("error_logs")
+}
+
+model TaskJob {
+  id           Int       @id @default(autoincrement())
+  taskName     String    @db.VarChar(128) @map("task_name")
+  taskType     String    @db.VarChar(64) @map("task_type")
+  queueName    String    @db.VarChar(64) @map("queue_name")
+  status       String    @default("PENDING") @db.VarChar(32) @map("status")
+  celeryTaskId String?   @db.VarChar(128) @map("celery_task_id")
+  requestId    String?   @db.VarChar(64) @map("request_id")
+  triggeredBy  Int?      @map("triggered_by")
+  payload      Json?     @map("payload")
+  result       Json?     @map("result")
+  progress     Int       @default(0) @map("progress")
+  errorMessage String?  @db.Text @map("error_message")
+  retryCount   Int       @default(0) @map("retry_count")
+  startedAt    DateTime? @map("started_at")
+  finishedAt   DateTime? @map("finished_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  fetchRecords NewsFetchRecord[]
+
+  @@map("task_jobs")
+}
+
+model FileAsset {
+  id              Int       @id @default(autoincrement())
+  originalName    String    @db.VarChar(255) @map("original_name")
+  storageName     String    @db.VarChar(255) @map("storage_name")
+  category        String    @db.VarChar(32) @map("category")
+  contentType     String    @db.VarChar(128) @map("content_type")
+  extension       String?   @db.VarChar(32) @map("extension")
+  size            Int       @map("size")
+  storageBackend  String    @default("local") @db.VarChar(64) @map("storage_backend")
+  storagePath     String    @db.VarChar(500) @map("storage_path")
+  url             String?   @db.VarChar(500) @map("url")
+  bucketName      String?   @db.VarChar(128) @map("bucket_name")
+  uploadedBy      Int?      @map("uploaded_by")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@map("file_assets")
+}
+
+model PlatformAccount {
+  id           Int       @id @default(autoincrement())
+  platform     String    @db.VarChar(64) @map("platform")
+  displayName  String    @db.VarChar(128) @map("display_name")
+  accountId    String    @db.VarChar(128) @map("account_id")
+  authStatus   String    @default("UNAUTHORIZED") @db.VarChar(32) @map("auth_status")
+  accessToken  String?   @db.Text @map("access_token")
+  refreshToken String?   @db.Text @map("refresh_token")
+  expiresAt    DateTime? @map("expires_at")
+  extra        Json?     @map("extra")
+  isEnabled    Boolean   @default(true) @map("is_enabled")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@map("platform_accounts")
+}
+
+model SystemConfig {
+  id           Int       @id @default(autoincrement())
+  category     String    @db.VarChar(64) @map("category")
+  configKey    String    @db.VarChar(128) @map("config_key")
+  configValue  String    @db.Text @map("config_value")
+  valueType    String    @default("STRING") @db.VarChar(32) @map("value_type")
+  description  String?   @db.VarChar(255) @map("description")
+  isSecret     Boolean   @default(false) @map("is_secret")
+  isEnabled    Boolean   @default(true) @map("is_enabled")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@unique([category, configKey])
+  @@map("system_configs")
+}

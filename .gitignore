@@ -15,3 +15,6 @@ backend/data/
 backend/storage/
 backend/.env
 
+/backend-ts/dist/
+/backend-ts/node_modules/
+
